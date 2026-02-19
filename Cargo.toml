@@ -1,0 +1,23 @@
+[package]
+name = "watlow_simulator"
+version = "0.1.0"
+edition = "2024"
+
+# Explicitly define the binaries
+[[bin]]
+name = "watlow_simulator"
+path = "src/main.rs"
+
+[[bin]]
+name = "watlow_simulator_client"
+path = "src/bin/client.rs"
+
+[dependencies]
+tokio = { version = "1.0", features = ["full"] }
+tokio-serial = "5.4"
+# Ensure we have RTU features for both client and server
+tokio-modbus = { version = "0.10", default-features = false, features = ["rtu", "server", "rtu-server"] }
+clap = { version = "4.4", features = ["derive"] }
+futures = "0.3"
+anyhow = "1.0"
+chrono = "0.4"

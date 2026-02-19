@@ -159,6 +159,8 @@ For testing without physical hardware, use virtual serial port pairs:
 
 ### Windows
 Use **com0com** or **Virtual Serial Port Driver**:
+
+
 ```
 Create pair: COM4 ↔ COM5
 ```

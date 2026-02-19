@@ -1,8 +1,8 @@
-name: CI/CD
+name: Release Pipeline
 
 permissions:
-  pull-requests: write
   contents: write
+  pull-requests: write
 
 on:
   push:
@@ -10,11 +10,11 @@ on:
   pull_request:
     branches: [ "main" ]
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
-  # Job 1: CI (Runs on PRs and Pushes)
+  # ------------------------------------------------------------------
+  # JOB 1: TEST
+  # Runs on every PR and Push. Fails fast if code is bad.
+  # ------------------------------------------------------------------
   check:
     name: Check & Test
     runs-on: ubuntu-latest
@@ -24,7 +24,6 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      # Critical for tokio-serial on Linux
       - name: Install Linux Dependencies
         run: |
           sudo apt-get update
@@ -42,36 +41,36 @@ jobs:
       - name: Check Formatting
         run: cargo fmt -- --check
 
-  # Job 2: Release Logic (Only runs on push to main, AND after CI passes)
-  release-plz:
-    name: Release-plz
+  # ------------------------------------------------------------------
+  # JOB 2: RELEASE PLEASE
+  # Creates the "Release PR". When merged, creates the GitHub Release.
+  # ------------------------------------------------------------------
+  release-please:
+    name: Release Please
     runs-on: ubuntu-latest
     needs: check
+    # Only run on main, not on PRs
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     outputs:
-      release_created: ${{ steps.release-plz.outputs.release_created }}
-      tag_name: ${{ steps.release-plz.outputs.tag_name }}
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: google-github-actions/release-please-action@v4
+        id: release
         with:
-          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # These files must exist in your repo
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Run release-plz
-        id: release-plz
-        uses: MarcoIeni/release-plz-action@v0.5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CARGO_REGISTRY_TOKEN: ""
-
-  # Job 3: Build & Upload (Only runs if a release was actually created in Job 2)
+  # ------------------------------------------------------------------
+  # JOB 3: BUILD & UPLOAD ASSETS
+  # Only runs if Job 2 actually created a NEW release.
+  # ------------------------------------------------------------------
   upload-assets:
     name: Build & Upload Assets
-    needs: release-plz
-    if: ${{ needs.release-plz.outputs.release_created == 'true' }}
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -93,7 +92,6 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      # Linux specific dependency for serial ports
       - name: Install Linux Dependencies
         if: runner.os == 'Linux'
         run: |
@@ -103,23 +101,23 @@ jobs:
       - name: Build Release
         run: cargo build --release --target ${{ matrix.target }}
 
-      # Prepare Server Binary
+      # Package Server
       - name: Package Server
         shell: bash
         run: |
           cp target/${{ matrix.target }}/release/watlow_simulator${{ matrix.asset_ext }} ${{ matrix.artifact_name }}-server${{ matrix.asset_ext }}
 
-      # Prepare Client Binary
+      # Package Client
       - name: Package Client
         shell: bash
         run: |
           cp target/${{ matrix.target }}/release/watlow_simulator_client${{ matrix.asset_ext }} ${{ matrix.artifact_name }}-client${{ matrix.asset_ext }}
 
-      # Upload to the GitHub Release created in Job 2
+      # Upload to the GitHub Release created by Google Release Please
       - name: Upload Server Asset
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ needs.release-plz.outputs.tag_name }}
+          tag_name: ${{ needs.release-please.outputs.tag_name }}
           files: ${{ matrix.artifact_name }}-server${{ matrix.asset_ext }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -127,7 +125,7 @@ jobs:
       - name: Upload Client Asset
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ needs.release-plz.outputs.tag_name }}
+          tag_name: ${{ needs.release-please.outputs.tag_name }}
           files: ${{ matrix.artifact_name }}-client${{ matrix.asset_ext }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

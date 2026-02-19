@@ -1,0 +1,7 @@
+[workspace]
+# We only want GitHub Releases, not crates.io publishing
+publish = false 
+
+# Ensure git tags and releases are created
+git_release_enable = true
+git_tag_enable = true

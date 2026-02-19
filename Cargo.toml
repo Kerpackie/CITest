@@ -2,6 +2,12 @@
 name = "watlow_simulator"
 version = "0.1.0"
 edition = "2024"
+# Metadata required for release tools (even if not publishing to crates.io)
+description = "A Modbus RTU simulator for Watlow PM8 controllers"
+license = "MIT"
+repository = "https://github.com/Kerpackie/CITest" 
+# Prevent accidental publishing to crates.io via cargo command
+publish = false 
 
 # Explicitly define the binaries
 [[bin]]

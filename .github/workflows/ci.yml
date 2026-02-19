@@ -1,15 +1,20 @@
-name: CI
+name: CI/CD
+
+permissions:
+  pull-requests: write
+  contents: write
 
 on:
-  pull_request:
-    branches: [ "main" ]
   push:
+    branches: [ "main" ]
+  pull_request:
     branches: [ "main" ]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Job 1: CI (Runs on PRs and Pushes)
   check:
     name: Check & Test
     runs-on: ubuntu-latest
@@ -36,3 +41,93 @@ jobs:
 
       - name: Check Formatting
         run: cargo fmt -- --check
+
+  # Job 2: Release Logic (Only runs on push to main, AND after CI passes)
+  release-plz:
+    name: Release-plz
+    runs-on: ubuntu-latest
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    outputs:
+      release_created: ${{ steps.release-plz.outputs.release_created }}
+      tag_name: ${{ steps.release-plz.outputs.tag_name }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run release-plz
+        id: release-plz
+        uses: MarcoIeni/release-plz-action@v0.5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ""
+
+  # Job 3: Build & Upload (Only runs if a release was actually created in Job 2)
+  upload-assets:
+    name: Build & Upload Assets
+    needs: release-plz
+    if: ${{ needs.release-plz.outputs.release_created == 'true' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: watlow_simulator-linux-amd64
+            asset_ext: ""
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: watlow_simulator-windows-amd64
+            asset_ext: ".exe"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # Linux specific dependency for serial ports
+      - name: Install Linux Dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libudev-dev
+
+      - name: Build Release
+        run: cargo build --release --target ${{ matrix.target }}
+
+      # Prepare Server Binary
+      - name: Package Server
+        shell: bash
+        run: |
+          cp target/${{ matrix.target }}/release/watlow_simulator${{ matrix.asset_ext }} ${{ matrix.artifact_name }}-server${{ matrix.asset_ext }}
+
+      # Prepare Client Binary
+      - name: Package Client
+        shell: bash
+        run: |
+          cp target/${{ matrix.target }}/release/watlow_simulator_client${{ matrix.asset_ext }} ${{ matrix.artifact_name }}-client${{ matrix.asset_ext }}
+
+      # Upload to the GitHub Release created in Job 2
+      - name: Upload Server Asset
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.release-plz.outputs.tag_name }}
+          files: ${{ matrix.artifact_name }}-server${{ matrix.asset_ext }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Client Asset
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.release-plz.outputs.tag_name }}
+          files: ${{ matrix.artifact_name }}-client${{ matrix.asset_ext }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

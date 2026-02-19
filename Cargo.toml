@@ -1,6 +1,6 @@
 [package]
 name = "watlow_simulator"
-version = "0.1.1"
+version = "0.3.0"
 edition = "2024"
 # Metadata required for release tools (even if not publishing to crates.io)
 description = "A Modbus RTU simulator for Watlow PM8 controllers"

@@ -89,7 +89,10 @@ impl Service for WatlowService {
                     oven.sp = values[0] as f32 / 10.0;
                     println!("SERVER: Multi-write SP updated to {:.1}°C", oven.sp);
                 }
-                future::ready(Ok(Response::WriteMultipleRegisters(addr, values.len() as u16)))
+                future::ready(Ok(Response::WriteMultipleRegisters(
+                    addr,
+                    values.len() as u16,
+                )))
             }
 
             _ => future::ready(Err(std::io::Error::new(
@@ -114,24 +117,31 @@ async fn main() -> anyhow::Result<()> {
     // 2. Physics Thread
     // Simulates thermal inertia: fast heating, slow cooling, ambient floor.
     let physics_state = state.clone();
-    thread::spawn(move || loop {
-        {
-            let mut oven = physics_state.lock().unwrap();
-            let diff = oven.sp - oven.pv;
+    thread::spawn(move || {
+        loop {
+            {
+                let mut oven = physics_state.lock().unwrap();
+                let diff = oven.sp - oven.pv;
 
-            if diff > 0.05 {
-                // Heating logic
-                oven.pv += 0.08;
-            } else if oven.pv > oven.ambient {
-                // Passive cooling logic
-                oven.pv -= 0.02;
+                if diff > 0.05 {
+                    // Heating logic
+                    oven.pv += 0.08;
+                } else if oven.pv > oven.ambient {
+                    // Passive cooling logic
+                    oven.pv -= 0.02;
+                }
+
+                // Tiny noise floor for sensor realism
+                let jitter = (std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_micros()
+                    % 100) as f32
+                    / 5000.0;
+                oven.pv += jitter - 0.01;
             }
-
-            // Tiny noise floor for sensor realism
-            let jitter = (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_micros() % 100) as f32 / 5000.0;
-            oven.pv += jitter - 0.01;
+            thread::sleep(Duration::from_millis(200));
         }
-        thread::sleep(Duration::from_millis(200));
     });
 
     println!("--- Watlow PM8 RTU Simulator ---");
@@ -148,7 +158,9 @@ async fn main() -> anyhow::Result<()> {
         .open_native_async()?;
 
     // 4. Run Modbus Server
-    let service = WatlowService { state: state.clone() };
+    let service = WatlowService {
+        state: state.clone(),
+    };
     let server = tokio_modbus::server::rtu::Server::new(port);
 
     server.serve_forever(service).await?;

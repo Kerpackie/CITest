@@ -1,7 +1,7 @@
 use clap::Parser;
-use tokio_serial::SerialPortBuilderExt;
-use tokio_modbus::prelude::*;
 use std::time::Duration;
+use tokio_modbus::prelude::*;
+use tokio_serial::SerialPortBuilderExt;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -32,7 +32,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     println!("--- Watlow PM8 Modbus Client ---");
-    println!("Connecting to: {} @ {} baud (Slave ID: {})", args.port, args.baud, args.unit_id);
+    println!(
+        "Connecting to: {} @ {} baud (Slave ID: {})",
+        args.port, args.baud, args.unit_id
+    );
 
     // 1. Open Serial Port
     let port = tokio_serial::new(&args.port, args.baud)
@@ -59,7 +62,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 4. Polling Loop
     println!("\nStarting Logger (Ctrl+C to stop)...");
-    println!("{:<25} | {:<10} | {:<10} | {:<10}", "Timestamp", "PV (Int)", "PV (F32)", "SP (Read)");
+    println!(
+        "{:<25} | {:<10} | {:<10} | {:<10}",
+        "Timestamp", "PV (Int)", "PV (F32)", "SP (Read)"
+    );
     println!("{}", "-".repeat(65));
 
     loop {
